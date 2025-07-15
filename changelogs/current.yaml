@@ -94,5 +94,11 @@ new_features:
 - area: rbac
   change: |
     Switch the IP matcher to use LC-Trie for performance improvements.
+- area: cel
+  change: |
+    Add a new %TYPED_CEL% formatter command that, unlike %CEL%, can output non-string values (number, boolean, null, etc)
+    when used in formatting contexts that accept non-string values, such as
+    :ref:`json_format <envoy_v3_api_field_config.core.v3.SubstitutionFormatString.json_format>`. The new command is introduced
+    so as to not break compatibility with the existing command's behavior.
 
 deprecated:

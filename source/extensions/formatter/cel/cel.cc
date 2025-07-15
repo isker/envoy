@@ -7,6 +7,7 @@
 
 #if defined(USE_CEL_PARSER)
 #include "parser/parser.h"
+#include "eval/public/value_export_util.h"
 #endif
 
 namespace Envoy {
@@ -17,9 +18,10 @@ namespace Expr = Filters::Common::Expr;
 
 CELFormatter::CELFormatter(const ::Envoy::LocalInfo::LocalInfo& local_info,
                            Expr::BuilderInstanceSharedPtr expr_builder,
-                           const cel::expr::Expr& input_expr, absl::optional<size_t>& max_length)
+                           const cel::expr::Expr& input_expr, absl::optional<size_t>& max_length,
+                           bool typed)
     : local_info_(local_info), expr_builder_(expr_builder), parsed_expr_(input_expr),
-      max_length_(max_length) {
+      max_length_(max_length), typed_(typed) {
   compiled_expr_ = Expr::createExpression(expr_builder_->builder(), parsed_expr_);
 }
 
@@ -44,22 +46,41 @@ CELFormatter::formatWithContext(const Envoy::Formatter::HttpFormatterContext& co
 ProtobufWkt::Value
 CELFormatter::formatValueWithContext(const Envoy::Formatter::HttpFormatterContext& context,
                                      const StreamInfo::StreamInfo& stream_info) const {
-  auto result = formatWithContext(context, stream_info);
-  if (!result.has_value()) {
-    return ValueUtil::nullValue();
+  if (typed_) {
+    Protobuf::Arena arena;
+    auto eval_status =
+        Expr::evaluate(*compiled_expr_, arena, &local_info_, stream_info, &context.requestHeaders(),
+                       &context.responseHeaders(), &context.responseTrailers());
+    if (!eval_status.has_value() || eval_status.value().IsError()) {
+      return ValueUtil::nullValue();
+    }
+
+    ProtobufWkt::Value json_value;
+    if (!ExportAsProtoValue(eval_status.value(), &json_value).ok()) {
+      return ValueUtil::nullValue();
+    }
+
+    if (max_length_ && json_value.kind_case() == ProtobufWkt::Value::kStringValue) {
+      json_value.set_string_value(json_value.string_value().substr(0, max_length_.value()));
+    }
+    return json_value;
+  } else {
+    auto result = formatWithContext(context, stream_info);
+    if (!result.has_value()) {
+      return ValueUtil::nullValue();
+    }
+    return ValueUtil::stringValue(result.value());
   }
-  return ValueUtil::stringValue(result.value());
 }
 
 ::Envoy::Formatter::FormatterProviderPtr
 CELFormatterCommandParser::parse(absl::string_view command, absl::string_view subcommand,
                                  absl::optional<size_t> max_length) const {
 #if defined(USE_CEL_PARSER)
-  if (command == "CEL") {
+  if (command == "CEL" || command == "TYPED_CEL") {
     auto parse_status = google::api::expr::parser::Parse(subcommand);
     if (!parse_status.ok()) {
-      throw EnvoyException("Not able to parse filter expression: " +
-                           parse_status.status().ToString());
+      throw EnvoyException("Not able to parse expression: " + parse_status.status().ToString());
     }
 
     Server::Configuration::ServerFactoryContext& context =
@@ -78,7 +99,7 @@ CELFormatterCommandParser::parse(absl::string_view command, absl::string_view su
 
     return std::make_unique<CELFormatter>(context.localInfo(),
                                           Extensions::Filters::Common::Expr::getBuilder(context),
-                                          cel_expr, max_length);
+                                          cel_expr, max_length, command == "TYPED_CEL");
   }
 
   return nullptr;
