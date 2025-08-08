@@ -8,9 +8,13 @@ namespace HttpFilters {
 DynamicModuleHttpFilterConfig::DynamicModuleHttpFilterConfig(
     const absl::string_view filter_name, const absl::string_view filter_config,
     Extensions::DynamicModules::DynamicModulePtr dynamic_module,
+    Stats::Scope& stats_scope,
     Server::Configuration::ServerFactoryContext& context)
-    : cluster_manager_(context.clusterManager()), filter_name_(filter_name),
-      filter_config_(filter_config), dynamic_module_(std::move(dynamic_module)) {};
+    : cluster_manager_(context.clusterManager()), stats_scope_(stats_scope),
+      stat_name_pool_(stats_scope_.symbolTable()),
+      custom_stat_namespace_(stat_name_pool_.add(CustomStatNamespace)),
+      filter_name_(filter_name), filter_config_(filter_config), dynamic_module_(std::move(dynamic_module))
+      {};
 
 DynamicModuleHttpFilterConfig::~DynamicModuleHttpFilterConfig() {
   // When the initialization of the dynamic module fails, the in_module_config_ is nullptr,
@@ -34,7 +38,7 @@ newDynamicModuleHttpPerRouteConfig(const absl::string_view per_route_config_name
               "envoy_dynamic_module_on_http_filter_per_route_config_new");
   RETURN_IF_NOT_OK_REF(constructor.status());
 
-  auto destroy = dynamic_module->getFunctionPointer<OnHttpPerRouteConfigDestoryType>(
+  auto destroy = dynamic_module->getFunctionPointer<OnHttpPerRouteConfigDestroyType>(
       "envoy_dynamic_module_on_http_filter_per_route_config_destroy");
   RETURN_IF_NOT_OK_REF(destroy.status());
 
@@ -53,13 +57,14 @@ absl::StatusOr<DynamicModuleHttpFilterConfigSharedPtr>
 newDynamicModuleHttpFilterConfig(const absl::string_view filter_name,
                                  const absl::string_view filter_config,
                                  Extensions::DynamicModules::DynamicModulePtr dynamic_module,
+                                 Stats::Scope& stats_scope,
                                  Server::Configuration::ServerFactoryContext& context) {
   auto constructor =
       dynamic_module->getFunctionPointer<decltype(&envoy_dynamic_module_on_http_filter_config_new)>(
           "envoy_dynamic_module_on_http_filter_config_new");
   RETURN_IF_NOT_OK_REF(constructor.status());
 
-  auto on_config_destroy = dynamic_module->getFunctionPointer<OnHttpConfigDestoryType>(
+  auto on_config_destroy = dynamic_module->getFunctionPointer<OnHttpConfigDestroyType>(
       "envoy_dynamic_module_on_http_filter_config_destroy");
   RETURN_IF_NOT_OK_REF(on_config_destroy.status());
 
@@ -109,7 +114,7 @@ newDynamicModuleHttpFilterConfig(const absl::string_view filter_name,
   RETURN_IF_NOT_OK_REF(on_scheduled.status());
 
   auto config = std::make_shared<DynamicModuleHttpFilterConfig>(filter_name, filter_config,
-                                                                std::move(dynamic_module), context);
+                                                                std::move(dynamic_module), stats_scope, context);
 
   const void* filter_config_envoy_ptr =
       (*constructor.value())(static_cast<void*>(config.get()), filter_name.data(),

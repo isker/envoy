@@ -124,6 +124,10 @@ typedef void* envoy_dynamic_module_type_http_filter_envoy_ptr;
  */
 typedef const void* envoy_dynamic_module_type_http_filter_module_ptr;
 
+typedef void* envoy_dynamic_module_type_metric_counter_envoy_ptr;
+typedef void* envoy_dynamic_module_type_metric_gauge_envoy_ptr;
+typedef void* envoy_dynamic_module_type_metric_histogram_envoy_ptr;
+
 /**
  * envoy_dynamic_module_type_http_filter_scheduler_ptr is a raw pointer to the
  * DynamicModuleHttpFilterScheduler class in Envoy.
@@ -726,6 +730,43 @@ void envoy_dynamic_module_on_http_filter_scheduled(
 //
 // Callbacks are functions implemented by Envoy that can be called by the module to interact with
 // Envoy. The name of a callback must be prefixed with "envoy_dynamic_module_callback_".
+
+// ----------------------------- Metrics callbacks -----------------------------
+
+envoy_dynamic_module_type_metric_counter_envoy_ptr
+envoy_dynamic_module_callback_metric_counter_new(
+    envoy_dynamic_module_type_http_filter_config_envoy_ptr filter_config_envoy_ptr,
+    envoy_dynamic_module_type_buffer_module_ptr name, size_t name_length);
+
+void envoy_dynamic_module_callback_metric_increment_counter(
+    envoy_dynamic_module_type_metric_counter_envoy_ptr counter_envoy_ptr,
+    uint64_t value);
+
+envoy_dynamic_module_type_metric_gauge_envoy_ptr
+envoy_dynamic_module_callback_metric_gauge_new(
+    envoy_dynamic_module_type_http_filter_config_envoy_ptr filter_config_envoy_ptr,
+    envoy_dynamic_module_type_buffer_module_ptr name, size_t name_length);
+
+void envoy_dynamic_module_callback_metric_increase_gauge(
+    envoy_dynamic_module_type_metric_gauge_envoy_ptr gauge_envoy_ptr,
+    uint64_t value);
+
+void envoy_dynamic_module_callback_metric_decrease_gauge(
+    envoy_dynamic_module_type_metric_gauge_envoy_ptr gauge_envoy_ptr,
+    uint64_t value);
+
+void envoy_dynamic_module_callback_metric_set_gauge(
+    envoy_dynamic_module_type_metric_gauge_envoy_ptr gauge_envoy_ptr,
+    uint64_t value);
+
+envoy_dynamic_module_type_metric_histogram_envoy_ptr
+envoy_dynamic_module_callback_metric_histogram_new(
+    envoy_dynamic_module_type_http_filter_config_envoy_ptr filter_config_envoy_ptr,
+    envoy_dynamic_module_type_buffer_module_ptr name, size_t name_length);
+
+void envoy_dynamic_module_callback_metric_record_histogram_value(
+    envoy_dynamic_module_type_metric_histogram_envoy_ptr histogram_envoy_ptr,
+    uint64_t value);
 
 // ---------------------- HTTP Header/Trailer callbacks ------------------------
 
